@@ -14,8 +14,8 @@
 Hold a configurable key combination (default: **Ctrl + Alt**) and scroll the mouse
 wheel to adjust the transparency of whichever window the cursor is hovering over.
 
-- **Scroll up** — increase opacity (more opaque)
-- **Scroll down** — decrease opacity (more transparent)
+- **Scroll up** — decrease opacity (more transparent)
+- **Scroll down** — increase opacity (more opaque)
 
 The opacity step, minimum opacity, and modifier keys are all configurable in the
 settings panel.
@@ -43,7 +43,7 @@ back to 100% opacity it is fully restored to its original state.
   $name: Modifier Key(s)
   $description: Key(s) to hold while scrolling the mouse wheel to change opacity
 
-- opacityStep: 10
+- opacityStep: 2
   $name: Opacity Step (%)
   $description: How much opacity changes per scroll tick (1–50)
 
@@ -70,15 +70,22 @@ struct Settings {
 
 void LoadSettings() {
     PCWSTR raw = Wh_GetStringSetting(L"modifierKey");
-    std::wstring key = raw ? raw : L"ctrl+alt";
+    std::wstring key = (raw && raw[0] != L'\0') ? raw : L"ctrl+alt";
     Wh_FreeStringSetting(raw);
 
     g_settings.needCtrl  = key.find(L"ctrl")  != std::wstring::npos;
     g_settings.needAlt   = key.find(L"alt")   != std::wstring::npos;
     g_settings.needShift = key.find(L"shift") != std::wstring::npos;
 
+    // Safety: if no modifier was parsed, default to Ctrl+Alt to avoid
+    // unconditionally intercepting all scroll events.
+    if (!g_settings.needCtrl && !g_settings.needAlt && !g_settings.needShift) {
+        g_settings.needCtrl = true;
+        g_settings.needAlt  = true;
+    }
+
     int step = Wh_GetIntSetting(L"opacityStep");
-    g_settings.step = (step >= 1 && step <= 50) ? step : 10;
+    g_settings.step = (step >= 1 && step <= 50) ? step : 2;
 
     int minPct = Wh_GetIntSetting(L"minOpacity");
     g_settings.minPct = (minPct >= 1 && minPct <= 90) ? minPct : 10;
@@ -198,7 +205,7 @@ LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
     if (nCode == HC_ACTION && wParam == WM_MOUSEWHEEL && IsModifierHeld()) {
         auto* ms    = reinterpret_cast<MSLLHOOKSTRUCT*>(lParam);
         int wheelDelta = GET_WHEEL_DELTA_WPARAM(ms->mouseData);
-        int delta      = (wheelDelta > 0) ? g_settings.step : -g_settings.step;
+        int delta      = (wheelDelta > 0) ? -g_settings.step : g_settings.step;
 
         HWND target = GetRootWindowAt(ms->pt);
         AdjustOpacity(target, delta);
